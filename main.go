@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -28,6 +30,13 @@ func main() {
 	r.HandleFunc("/", handler)
 
 	// start: set up any of your logger configuration here if necessary
+	lf, err := os.OpenFile("logs/app.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		log.Fatal().Err(err).Msg("unable to open log file")
+	}
+	multiWriters := zerolog.MultiLevelWriter(os.Stdout, lf)
+	log.Logger = zerolog.New(multiWriters).With().Timestamp().Logger()
+	log.Info().Msg("hello world")
 
 	// end: set up any of your logger configuration here
 
@@ -49,7 +58,13 @@ func main() {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	logger := log.With().
+		Str("request_id", uuid.New().String()).
+		Logger()
+	// add logger to context
+	ctx := logger.WithContext(r.Context())
+	logger.Info().Ctx(ctx).
+		Msg("request received")
 	name := r.URL.Query().Get("name")
 	res, err := greeting(ctx, name)
 	if err != nil {
@@ -60,8 +75,16 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func greeting(ctx context.Context, name string) (string, error) {
+	logger := log.Ctx(ctx)
+	logger.Debug().Msg("request name is " + name)
 	if len(name) < 5 {
 		return fmt.Sprintf("Hello %s! Your name is to short\n", name), nil
 	}
+	doSecond(ctx)
 	return fmt.Sprintf("Hi %s", name), nil
+}
+
+func doSecond(ctx context.Context) {
+	logger := log.Ctx(ctx)
+	logger.Info().Msg("from do second")
 }
